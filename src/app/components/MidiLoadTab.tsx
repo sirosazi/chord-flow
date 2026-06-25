@@ -33,6 +33,7 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
   const [bpmInputStr, setBpmInputStr]   = useState(String(DEFAULT_BPM))
   const [speedMultiplier, setSpeedMultiplier] = useState<number>(1)
   const [loopEnabled, setLoopEnabled]   = useState(false)
+  const [octaveShift, setOctaveShift]   = useState(0)
   const [audioEnabled, setAudioEnabled]  = useState(true)
   const [mp3Url, setMp3Url]           = useState<string | null>(null)
   const [mp3FileName, setMp3FileName] = useState("")
@@ -196,10 +197,10 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
     if (!item) return
     audioEngine.stopAll()
     if (!item.chord) return
-    const notes = chordNameToNotes(item.chord, 4)
+    const notes = chordNameToNotes(item.chord, 4 + octaveShift)
     const durationMs = (item.duration / midiPlaybackRate) * 1000
     if (audioEnabledRef.current) audioEngine.playChord(notes, Math.min(durationMs, 2000), 90)
-  }, [currentIndex, isPlaying, chordProgression, midiPlaybackRate])
+  }, [currentIndex, isPlaying, chordProgression, midiPlaybackRate, octaveShift])
 
   useEffect(() => {
     if (!guideEnabled || chordProgression.length === 0) { setGuideKeys([]); return }
@@ -207,10 +208,10 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
     const chordName = item?.chord?.trim()
     if (!chordName) { setGuideKeys([]); return }
     try {
-      const notes = chordNameToNotes(chordName, 4)
+      const notes = chordNameToNotes(chordName, 4 + octaveShift)
       setGuideKeys(notes.filter(n => n >= KEYBOARD_MIDI_MIN && n <= KEYBOARD_MIDI_MAX))
     } catch { setGuideKeys([]) }
-  }, [guideEnabled, chordProgression, currentIndex, setGuideKeys])
+  }, [guideEnabled, chordProgression, currentIndex, setGuideKeys, octaveShift])
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = speedMultiplier
@@ -430,7 +431,7 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, color: '#64748b' }}>速度</span>
+                <span style={{ fontSize: 12, color: '#64748b' }}>Speed</span>
                 <Select value={String(speedMultiplier)} onValueChange={v => setSpeedMultiplier(Number(v))}>
                   <SelectTrigger style={{ width: 110, height: 32, fontSize: 12, background: 'rgba(235,240,248,0.9)', border: 'none', color: '#4a6a8a', borderRadius: 9, boxShadow: '3px 3px 7px rgba(130,150,185,0.4), -3px -3px 7px rgba(255,255,255,0.8)' }}>
                     <SelectValue />
@@ -438,11 +439,19 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
                   <SelectContent style={{ background: 'rgba(235,240,248,0.97)', border: 'none', borderRadius: 10, boxShadow: '4px 4px 10px rgba(130,150,185,0.45), -4px -4px 10px rgba(255,255,255,0.85)' }}>
                     {SPEED_OPTIONS.map(rate => (
                       <SelectItem key={rate} value={String(rate)}>
-                        {rate === 1 ? "等倍" : `${rate}倍速`}
+                        {`×${rate.toFixed(2)}`}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 12, color: '#64748b' }}>Octave</span>
+                <button style={btnGray} onClick={() => setOctaveShift(v => Math.max(-2, v - 1))} disabled={octaveShift <= -2}>−</button>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#4a6a8a', minWidth: 28, textAlign: 'center', fontFamily: 'monospace' }}>
+                  {octaveShift > 0 ? `+${octaveShift}` : octaveShift}
+                </span>
+                <button style={btnGray} onClick={() => setOctaveShift(v => Math.min(2, v + 1))} disabled={octaveShift >= 2}>+</button>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                 {[
