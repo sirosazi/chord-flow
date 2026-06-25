@@ -20,6 +20,7 @@ interface ActiveNote {
 
 class AudioEngine {
   private activeNotes: Map<number, ActiveNote> = new Map()
+  private stopTimeouts: ReturnType<typeof setTimeout>[] = []
 
   playNote(midiNote: number, velocity: number = 100): void {
     const ac   = getCtx()
@@ -85,12 +86,15 @@ class AudioEngine {
   // MidiLoadTab用: durationMs の間鳴らしてから Release
   playChord(midiNotes: number[], durationMs: number = 800, velocity: number = 100): void {
     midiNotes.forEach(note => this.playNote(note, velocity))
-    setTimeout(() => {
+    const t = setTimeout(() => {
       midiNotes.forEach(note => this.stopNote(note))
     }, durationMs)
+    this.stopTimeouts.push(t)
   }
 
   stopAll(): void {
+    this.stopTimeouts.forEach(t => clearTimeout(t))
+    this.stopTimeouts = []
     const ac  = getCtx()
     const now = ac.currentTime
     this.activeNotes.forEach(note => {

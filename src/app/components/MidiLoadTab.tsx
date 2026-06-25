@@ -37,6 +37,8 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
   const [mp3Url, setMp3Url]           = useState<string | null>(null)
   const [mp3FileName, setMp3FileName] = useState("")
   const [mp3Enabled, setMp3Enabled]   = useState(true)
+  const [mp3Offset, setMp3Offset]     = useState(0)
+  const [mp3OffsetStr, setMp3OffsetStr] = useState("0")
   const startTimeRef    = useRef<number>(0)
   const intervalRef     = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioRef        = useRef<HTMLAudioElement | null>(null)
@@ -45,6 +47,7 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
   const loopEnabledRef  = useRef(false)
   const audioEnabledRef = useRef(true)
   const mp3EnabledRef   = useRef(true)
+  const mp3OffsetRef    = useRef(0)
 
   const effectiveFileBpm = fileBpm ?? DEFAULT_BPM
   const midiPlaybackRate = effectiveFileBpm > 0
@@ -69,6 +72,7 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
       const bpm = getBpmFromMidi(arrayBuffer)
       setFileBpm(bpm)
       setMidiBaseBpm(bpm ?? DEFAULT_BPM)
+      setBpmInputStr(String(bpm ?? DEFAULT_BPM))
       setChordProgression(parseMidiToChordProgression(arrayBuffer, (m) => console.log(m)))
       setCurrentIndex(0)
     } catch (err) { alert("MIDIの解析に失敗しました") }
@@ -94,6 +98,26 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
     return sum
   }
 
+  const mp3TimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const startMp3 = (fromMidiTime: number) => {
+    if (!audioRef.current) return
+    if (mp3TimeoutRef.current) { clearTimeout(mp3TimeoutRef.current); mp3TimeoutRef.current = null }
+    const mp3Start = fromMidiTime - mp3OffsetRef.current
+    audioRef.current.playbackRate = speedMultiplier
+    if (mp3Start >= 0) {
+      audioRef.current.currentTime = mp3Start
+      if (mp3EnabledRef.current) audioRef.current.play().catch(() => {})
+    } else {
+      audioRef.current.currentTime = 0
+      if (mp3EnabledRef.current) {
+        mp3TimeoutRef.current = setTimeout(() => {
+          audioRef.current?.play().catch(() => {})
+        }, Math.abs(mp3Start) * 1000)
+      }
+    }
+  }
+
   const handlePlay = () => {
     if (chordProgression.length === 0) return
     audioEngine.stopAll()
@@ -101,11 +125,7 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
     setCurrentIndex(0)
     setIsPlaying(true)
     setIsPaused(false)
-    if (audioRef.current) {
-      audioRef.current.currentTime = 0
-      audioRef.current.playbackRate = speedMultiplier
-      if (mp3Enabled) audioRef.current.play().catch(() => {})
-    }
+    startMp3(0)
   }
 
   const handlePlayFromIndex = (index: number) => {
@@ -116,11 +136,7 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
     setCurrentIndex(index)
     setIsPlaying(true)
     setIsPaused(false)
-    if (audioRef.current) {
-      audioRef.current.currentTime = elapsedSec
-      audioRef.current.playbackRate = speedMultiplier
-      if (mp3Enabled) audioRef.current.play().catch(() => {})
-    }
+    startMp3(elapsedSec)
   }
 
   const tick = () => {
@@ -155,10 +171,7 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
   const handleResume = useCallback(() => {
     const elapsedSec = getElapsedSecondsUpToIndex(currentIndex)
     startTimeRef.current = Date.now() - elapsedSec * 1000
-    if (audioRef.current) {
-      audioRef.current.currentTime = elapsedSec
-      if (mp3Enabled) audioRef.current.play().catch(() => {})
-    }
+    startMp3(elapsedSec)
     setIsPaused(false)
   }, [])
 
@@ -166,6 +179,7 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
     setIsPlaying(false)
     setIsPaused(false)
     if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
+    if (mp3TimeoutRef.current) { clearTimeout(mp3TimeoutRef.current); mp3TimeoutRef.current = null }
     audioEngine.stopAll()
     if (audioRef.current) audioRef.current.pause()
   }
@@ -240,6 +254,7 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
   useEffect(() => { loopEnabledRef.current = loopEnabled }, [loopEnabled])
   useEffect(() => { audioEnabledRef.current = audioEnabled }, [audioEnabled])
   useEffect(() => { mp3EnabledRef.current = mp3Enabled }, [mp3Enabled])
+  useEffect(() => { mp3OffsetRef.current = mp3Offset }, [mp3Offset])
 
   // アクティブコードを自動スクロール（ページスクロールさせない）
   useEffect(() => {
@@ -336,6 +351,31 @@ export function MidiLoadTab({ guideEnabled, setGuideEnabled, setGuideKeys }: Mid
               >
                 <Volume2 size={15} />
               </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 12, color: '#64748b' }}>Delay</span>
+                <input
+                  type="number"
+                  value={mp3OffsetStr}
+                  step="0.01"
+                  min="-10"
+                  max="10"
+                  onChange={e => setMp3OffsetStr(e.target.value)}
+                  onBlur={() => {
+                    const v = parseFloat(mp3OffsetStr)
+                    const clamped = isNaN(v) ? 0 : Math.min(10, Math.max(-10, v))
+                    setMp3Offset(clamped)
+                    setMp3OffsetStr(String(clamped))
+                  }}
+                  style={{
+                    width: 64, textAlign: 'center', fontWeight: 500, color: '#4a6a8a',
+                    fontFamily: 'monospace', fontSize: 13,
+                    background: 'rgba(210,220,235,0.45)', border: 'none', borderRadius: 8,
+                    boxShadow: 'inset 2px 2px 5px rgba(130,150,185,0.35), inset -2px -2px 5px rgba(255,255,255,0.7)',
+                    padding: '4px 6px', outline: 'none',
+                  }}
+                />
+                <span style={{ fontSize: 12, color: '#94a3b8' }}>秒</span>
+              </div>
             </div>
           )}
         </div>
